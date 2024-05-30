@@ -3,7 +3,13 @@ import os
 from PIL import Image, ImageOps
 import pytesseract
 import pandas as pd
+import base64
+import requests
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+api_key = os.getenv('OPENAI_API_KEY')
 full_img_path = r"cropped/cropped_screenshot.png"
 button_img_path = r"cropped/cropped_button.png"
 
@@ -72,14 +78,50 @@ def read_text_from_image(image_path):
 def buy_slot():
     cmd = f"adb shell input tap 1140 1214"
     subprocess.run(cmd, shell = True)
+def img_to_vision(image_path):
+    with open(image_path, "rb") as image_file:
+        img_b64 = base64.b64encode(image_file.read()).decode('utf-8')
+    headers = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {api_key}"
+    }
+
+    payload = {
+    "model": "gpt-4o",
+    "messages": [
+        {
+        "role": "user",
+        "content": [
+            {
+            "type": "text",
+            "text": "What’s in this image?, provide only text"
+            },
+            {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{img_b64}"
+            }
+            }
+        ]
+        }
+    ],
+    "max_tokens": 300
+    }
+
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    final_text  = response.json()["choices"][0]["message"]["content"]
+    return final_text
 def mainloop():
     directory = r"F:/python/Eatventure OCR/images"
     take_android_screenshot(directory)
     crop_image_full(r"images\screenshot.png",r"cropped")
     crop_image_full_button(r"images\screenshot.png",r"cropped")
-    price = read_text_from_image(button_img_path)[0][1:]
-    perk_name = read_text_from_image(full_img_path)[0]
-    perk_description = read_text_from_image(full_img_path)[1]
+    price = img_to_vision(button_img_path)
+    perk_names = img_to_vision(full_img_path).split("\n")
+    perk_name = perk_names[0]
+    perk_description = perk_names[1]
+    if perk_description.startswith("The image is completely black"):
+        raise "Just closing the app"
     new_data = {
         "perk name": perk_name,
         "Perk description": perk_description,
